@@ -56,8 +56,8 @@ pub(super) struct AccountContext {
     /// How far each agent's quota may be read (`quota_reading::SETTING`).
     pub quota_levels: Arc<Mutex<HashMap<String, agents::account::QuotaReading>>>,
     /// A web sign-in being tried before it is kept (`WebSignInDesk::accepts`):
-    /// the provider and the session, the only one a reading then sees.
-    pub trial_web: Option<(String, agents::account::WebSession)>,
+    /// the provider, profile slot and session, the only one a reading then sees.
+    pub trial_web: Option<(String, String, agents::account::WebSession)>,
 }
 use agent_hud_agents::account::Reading as AccountReading;
 

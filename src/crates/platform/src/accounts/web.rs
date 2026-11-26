@@ -30,6 +30,21 @@ fn path(ctx: &AccountContext, provider: &str, host: &str) -> Option<PathBuf> {
     Some(folder(ctx).join(format!("{provider}@{host}.json")))
 }
 
+fn slot_path(ctx: &AccountContext, provider: &str, host: &str, slot: &str) -> Option<PathBuf> {
+    if !valid_slot(provider, slot) || slot == "main" {
+        return None;
+    }
+    path(ctx, provider, host).map(|path| {
+        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        path.with_file_name(format!("{stem}.{slot}.json"))
+    })
+}
+
+pub(super) fn valid_slot(provider: &str, slot: &str) -> bool {
+    slot == "main"
+        || (provider == "workbuddy" && (2..=10).any(|number| slot == format!("account-{number}")))
+}
+
 fn legacy_path(ctx: &AccountContext, provider: &str, host: &str) -> Option<PathBuf> {
     let legacy = match (provider, host) {
         ("qoder-cn", "qoder.com.cn") => "qoder",
@@ -46,6 +61,23 @@ pub(super) fn read(ctx: &AccountContext, provider: &str, host: &str) -> Option<W
         .or_else(|| legacy_path(ctx, provider, host).and_then(|p| read_file(&p, host)))
 }
 
+/// All sessions kept for a provider. WorkBuddy supports additional numbered
+/// profiles; other providers retain their single existing session.
+pub(super) fn read_all(ctx: &AccountContext, provider: &str, host: &str) -> Vec<WebSession> {
+    let mut sessions = read(ctx, provider, host).into_iter().collect::<Vec<_>>();
+    if provider == "workbuddy" {
+        for number in 2..=10 {
+            let slot = format!("account-{number}");
+            if let Some(path) = slot_path(ctx, provider, host, &slot) {
+                if let Some(session) = read_file(&path, host) {
+                    sessions.push(session);
+                }
+            }
+        }
+    }
+    sessions
+}
+
 fn read_file(path: &std::path::Path, host: &str) -> Option<WebSession> {
     let meta = fs::symlink_metadata(path).ok()?;
     if !meta.is_file() || meta.len() > 256 * 1024 || !crate::os::owner_only(path, &meta) {
@@ -60,17 +92,43 @@ fn read_file(path: &std::path::Path, host: &str) -> Option<WebSession> {
         host: host.to_owned(),
         cookie: value["cookie"].as_str()?.to_owned(),
         user_agent: value["userAgent"].as_str()?.to_owned(),
+        account_slot: path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .and_then(|stem| {
+                (2..=10).find_map(|number| {
+                    let suffix = format!(".account-{number}");
+                    stem.ends_with(&suffix).then(|| format!("account-{number}"))
+                })
+            })
+            .unwrap_or_else(|| "main".into()),
     })
 }
 
 /// Keeps `session` for `provider`, replacing the one before.
+#[cfg(test)]
 pub(super) fn save(
     ctx: &AccountContext,
     provider: &str,
     session: &WebSession,
 ) -> Result<(), String> {
+    save_slot(ctx, provider, session, "main")
+}
+
+pub(super) fn save_slot(
+    ctx: &AccountContext,
+    provider: &str,
+    session: &WebSession,
+    slot: &str,
+) -> Result<(), String> {
     let target = path(ctx, provider, &session.host)
         .ok_or_else(|| tr!("This provider takes no sign-in in Agent HUD"))?;
+    let target = if slot == "main" {
+        target
+    } else {
+        slot_path(ctx, provider, &session.host, slot)
+            .ok_or_else(|| tr!("This account slot is not supported"))?
+    };
     if session.cookie.is_empty()
         || session.cookie.len() > 128 * 1024
         || session
@@ -115,11 +173,29 @@ pub(super) fn save(
 }
 
 /// Forgets the session for `provider` on `host`.
+#[cfg(test)]
 pub(super) fn remove(ctx: &AccountContext, provider: &str, host: &str) -> Result<(), String> {
+    remove_slot(ctx, provider, host, "main")
+}
+
+pub(super) fn remove_slot(
+    ctx: &AccountContext,
+    provider: &str,
+    host: &str,
+    slot: &str,
+) -> Result<(), String> {
     let path = path(ctx, provider, host)
         .ok_or_else(|| tr!("This provider takes no sign-in in Agent HUD"))?;
-    if let Some(legacy) = legacy_path(ctx, provider, host) {
-        let _ = fs::remove_file(legacy);
+    let path = if slot == "main" {
+        path
+    } else {
+        slot_path(ctx, provider, host, slot)
+            .ok_or_else(|| tr!("This account slot is not supported"))?
+    };
+    if slot == "main" {
+        if let Some(legacy) = legacy_path(ctx, provider, host) {
+            let _ = fs::remove_file(legacy);
+        }
     }
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -136,10 +212,31 @@ pub(super) fn status(ctx: &AccountContext, provider: &Provider) -> Option<Value>
         .sites
         .iter()
         .map(|site| {
+            let accounts = if provider.id == "workbuddy" {
+                (1..=10)
+                    .filter_map(|number| {
+                        let slot = if number == 1 {
+                            "main".to_owned()
+                        } else {
+                            format!("account-{number}")
+                        };
+                        let file = if slot == "main" {
+                            path(ctx, provider.id, site.host)
+                        } else {
+                            slot_path(ctx, provider.id, site.host, &slot)
+                        }?;
+                        read_file(&file, site.host).map(|_| json!({"slot":slot,"signedIn":true}))
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
             json!({
                 "host": site.host,
                 "name": site.name,
                 "signedIn": read(ctx, provider.id, site.host).is_some(),
+                "multiAccount": provider.id == "workbuddy",
+                "accounts": accounts,
             })
         })
         .collect::<Vec<_>>();
@@ -168,6 +265,7 @@ mod tests {
             host: host.into(),
             cookie: "sid=1; theme=dark".into(),
             user_agent: agents::account::WEB_USER_AGENT.into(),
+            account_slot: "main".into(),
         }
     }
 
@@ -204,13 +302,36 @@ mod tests {
             ctx.web_session("qoder", "qoder.com"),
             Some(session("qoder.com"))
         );
-        ctx.trial_web = Some(("qoder".into(), session("qoder.com.cn")));
+        ctx.trial_web = Some(("qoder".into(), "main".into(), session("qoder.com.cn")));
         assert_eq!(ctx.web_session("qoder", "qoder.com"), None);
         assert_eq!(
             ctx.web_session("qoder", "qoder.com.cn"),
             Some(session("qoder.com.cn"))
         );
         assert_eq!(ctx.web_session("workbuddy", "qoder.com.cn"), None);
+    }
+
+    #[test]
+    fn workbuddy_keeps_and_removes_additional_sign_ins_independently() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = context(&dir.path().join("t"));
+        let mut first = session("www.workbuddy.cn");
+        first.cookie = "sid=first".into();
+        let mut second = session("www.workbuddy.cn");
+        second.cookie = "sid=second".into();
+        second.account_slot = "account-2".into();
+        save(&ctx, "workbuddy", &first).unwrap();
+        save_slot(&ctx, "workbuddy", &second, "account-2").unwrap();
+
+        let all = read_all(&ctx, "workbuddy", "www.workbuddy.cn");
+        assert_eq!(all, vec![first.clone(), second.clone()]);
+        let status = status(&ctx, agents::account_provider("workbuddy").unwrap()).unwrap();
+        assert_eq!(status["sites"][0]["accounts"].as_array().unwrap().len(), 2);
+        assert!(!status.to_string().contains("sid=first"));
+        assert!(!status.to_string().contains("sid=second"));
+
+        remove_slot(&ctx, "workbuddy", "www.workbuddy.cn", "account-2").unwrap();
+        assert_eq!(read_all(&ctx, "workbuddy", "www.workbuddy.cn"), vec![first]);
     }
 
     #[test]

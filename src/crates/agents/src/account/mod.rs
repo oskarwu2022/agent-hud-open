@@ -92,6 +92,11 @@ pub fn merge(reading: &mut Reading, other: Reading) {
             reading.quotas.push(quota);
         }
     }
+    for billing in other.billing {
+        if !reading.billing.iter().any(|row| row["id"] == billing["id"]) {
+            reading.billing.push(billing);
+        }
+    }
     for account in other.account.into_iter().chain(other.additional_accounts) {
         if let Some(known) = reading
             .account

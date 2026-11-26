@@ -177,6 +177,7 @@ fn web_sign_in_fallback_and_legacy_qoder_cn_session_still_work() {
             host: "qoder.com".into(),
             cookie: "sid=g".into(),
             user_agent: crate::account::WEB_USER_AGENT.into(),
+            account_slot: "main".into(),
         },
     );
     // Legacy CN web session stored under "qoder|qoder.com.cn".
@@ -186,6 +187,7 @@ fn web_sign_in_fallback_and_legacy_qoder_cn_session_still_work() {
             host: "qoder.com.cn".into(),
             cookie: "sid=c".into(),
             user_agent: crate::account::WEB_USER_AGENT.into(),
+            account_slot: "main".into(),
         },
     );
     let host = host
@@ -234,6 +236,7 @@ fn teams_organization_credits_are_independent_of_personal_credits() {
             host: "qoder.com".into(),
             cookie: "fixture".into(),
             user_agent: crate::account::WEB_USER_AGENT.into(),
+            account_slot: "main".into(),
         },
     );
     let reading = read_qoder(&web).unwrap();

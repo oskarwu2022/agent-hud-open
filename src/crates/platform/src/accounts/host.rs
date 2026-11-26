@@ -103,10 +103,23 @@ impl Host for AccountContext {
     }
     fn web_session(&self, provider: &str, host: &str) -> Option<WebSession> {
         // A sign-in being tried is the only session that reading sees.
-        if let Some((trying, session)) = &self.trial_web {
+        if let Some((trying, _, session)) = &self.trial_web {
             return (trying == provider && session.host == host).then(|| session.clone());
         }
         web::read(self, provider, host)
+    }
+    fn web_sessions(&self, provider: &str, host: &str) -> Vec<WebSession> {
+        if let Some((trying, _, session)) = &self.trial_web {
+            if trying == provider && session.host == host {
+                return vec![session.clone()];
+            }
+        }
+        web::read_all(self, provider, host)
+    }
+    fn web_sign_in_trial(&self, provider: &str) -> bool {
+        self.trial_web
+            .as_ref()
+            .is_some_and(|(trying, _, _)| trying == provider)
     }
     fn consented(&self, setting: &str) -> bool {
         if let Some(relay) = setting

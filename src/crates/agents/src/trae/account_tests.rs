@@ -31,6 +31,7 @@ fn signed_in(provider: &str, site: &str) -> FakeHost {
             host: site.into(),
             cookie: "sessionid=fixture".into(),
             user_agent: crate::account::WEB_USER_AGENT.into(),
+            account_slot: "main".into(),
         },
     );
     fake

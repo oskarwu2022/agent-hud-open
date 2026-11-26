@@ -42,7 +42,13 @@ export interface Provider {
      * it, and on which of its sites a session is kept. Never the session. */
     webSignIn?: {
       provider: string;
-      sites: { host: string; name: string; signedIn: boolean }[];
+      sites: {
+        host: string;
+        name: string;
+        signedIn: boolean;
+        multiAccount?: boolean;
+        accounts?: { slot: string; signedIn: boolean }[];
+      }[];
     } | null;
     /** The events whose Agent HUD hook the agent skips until the user allows
      * it in the agent itself (Codex's hook review). */

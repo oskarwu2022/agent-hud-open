@@ -31,6 +31,7 @@ fn signed_in_web() -> FakeHost {
             host: WEB_HOST.into(),
             cookie: "session=1".into(),
             user_agent: crate::account::WEB_USER_AGENT.into(),
+            account_slot: "main".into(),
         },
     );
     fake
@@ -261,4 +262,32 @@ fn workbuddy_web_plans_page_fallback_and_errors_still_hold() {
 
     let host = signed_in_web().answer(WB_WEB_SUMMARY, Err(HttpFailure::Status(401)));
     assert_eq!(read_workbuddy(&host).err().unwrap().kind(), "signedOut");
+}
+
+#[test]
+fn workbuddy_web_accounts_keep_separate_ids_and_quotas() {
+    let host = signed_in_web()
+        .answer(WB_WEB_SUMMARY, Ok(summary_fixture()))
+        .answer(WB_WEB_PAID, Ok(json!({"data": []})))
+        .answer(WB_WEB_FREE, Ok(json!({"data": []})));
+    let session = |account_slot| WebSession {
+        host: WEB_HOST.into(),
+        cookie: "session=fixture".into(),
+        user_agent: crate::account::WEB_USER_AGENT.into(),
+        account_slot,
+    };
+    let mut reading = read_workbuddy_web(&host, &session("main".into())).unwrap();
+    let second = read_workbuddy_web(&host, &session("account-2".into())).unwrap();
+    crate::account::merge(&mut reading, second);
+    assert_eq!(reading.additional_accounts.len(), 1);
+    assert_ne!(
+        reading.account.as_ref().unwrap()["id"],
+        reading.additional_accounts[0]["id"]
+    );
+    assert_eq!(reading.account.as_ref().unwrap()["label"], "WorkBuddy");
+    assert_eq!(
+        reading.additional_accounts[0]["label"],
+        "WorkBuddy account 2"
+    );
+    assert_eq!(reading.billing.len(), 2);
 }

@@ -63,19 +63,33 @@ const CODEBUDDY_CN_SPEC: CopilotSpec = CopilotSpec {
 };
 
 pub fn read_workbuddy(host: &dyn Host) -> Result<Reading, Unread> {
-    let mut local_failure = None;
-    match read_workbuddy_local(host) {
-        Ok(Some(auth)) => match read_copilot(host, &WORKBUDDY_SPEC, auth) {
-            Ok(reading) => return Ok(reading),
-            Err(why) => local_failure = Some(why),
-        },
-        Ok(None) => {}
-        Err(why) => local_failure = Some(why),
+    let mut combined: Option<Reading> = None;
+    let mut failure = None;
+    if !host.web_sign_in_trial("workbuddy") {
+        match read_workbuddy_local(host) {
+            Ok(Some(auth)) => match read_copilot(host, &WORKBUDDY_SPEC, auth) {
+                Ok(reading) => combined = Some(reading),
+                Err(why) => failure = Some(why),
+            },
+            Ok(None) => {}
+            Err(why) => failure = Some(why),
+        }
     }
-    if let Some(session) = host.web_session("workbuddy", WEB_HOST) {
-        return read_workbuddy_web(host, &session);
+    for session in host.web_sessions("workbuddy", WEB_HOST) {
+        match read_workbuddy_web(host, &session) {
+            Ok(reading) => match &mut combined {
+                Some(existing) => crate::account::merge(existing, reading),
+                None => combined = Some(reading),
+            },
+            Err(why) => {
+                failure.get_or_insert(why);
+            }
+        };
     }
-    if let Some(why) = local_failure {
+    if let Some(reading) = combined {
+        return Ok(reading);
+    }
+    if let Some(why) = failure {
         return Err(why);
     }
     Ok(Reading::empty("workbuddy"))

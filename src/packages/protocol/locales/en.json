@@ -91,5 +91,9 @@
   "{{count}} usage resets were added to this account._one": "A usage reset was added to this account.",
   "{{count}} usage resets were added to this account._other": "{{count, number}} usage resets were added to this account.",
   "{{done}} of {{count}} days_one": "{{done}} of {{count, number}} day",
-  "{{done}} of {{count}} days_other": "{{done}} of {{count, number}} days"
+  "{{done}} of {{count}} days_other": "{{done}} of {{count, number}} days",
+  "Add account": "Add account",
+  "Add another WorkBuddy account": "Add another WorkBuddy account",
+  "Sign in with a different WorkBuddy account.": "Sign in with a different WorkBuddy account.",
+  "WorkBuddy account {{number}}": "WorkBuddy account {{number}}"
 }

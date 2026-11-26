@@ -50,17 +50,17 @@ pub(super) fn read_workbuddy_web(host: &dyn Host, session: &WebSession) -> Resul
     let reset = web_cycle_end(host, session, PAID_PACKAGES, false, now)
         .or_else(|| web_cycle_end(host, session, FREE_PACKAGES, true, now))
         .map(|at| at.to_rfc3339());
-    let id = account_id("workbuddy", &[WEB_HOST]);
-    finish_workbuddy_reading(
-        "workbuddy",
-        &summary,
-        &id,
-        "WorkBuddy",
-        "web",
-        &None,
-        reset,
-        now,
-    )
+    let id = if session.account_slot == "main" {
+        account_id("workbuddy", &[WEB_HOST])
+    } else {
+        account_id("workbuddy", &[WEB_HOST, &session.account_slot])
+    };
+    let label = if session.account_slot == "main" {
+        "WorkBuddy".to_owned()
+    } else {
+        format!("WorkBuddy {}", session.account_slot.replace('-', " "))
+    };
+    finish_workbuddy_reading("workbuddy", &summary, &id, &label, "web", &None, reset, now)
 }
 
 #[allow(clippy::too_many_arguments)]

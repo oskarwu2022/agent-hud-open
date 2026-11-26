@@ -138,6 +138,18 @@ impl AccountService {
             // user allows them in the agent itself, as its last good reading said.
             result.providers.insert(entry.reading.provider.into(),json!({"status":if entry.failed {"error"}else if ready {"ready"}else{"unavailable"},"checkedAt":entry.checked_at,"notice":entry.notice,"failure":failure,"failingSince":failing_since,"service":service,"webSignIn":web_sign_in,"unreviewedHooks":entry.reading.unreviewed_hooks}));
         }
+        // Keep a web sign-in section available for providers whose local
+        // client is disabled or not detected. It lets users add an account
+        // without first turning on local quota reading.
+        for &facts in agents::ACCOUNTS {
+            let Some(web_sign_in) = web::status(&self.context, facts) else {
+                continue;
+            };
+            result
+                .providers
+                .entry(facts.id.into())
+                .or_insert_with(|| json!({"status":"unavailable","checkedAt":null,"notice":null,"webSignIn":web_sign_in}));
+        }
         for metadata in credentials::status(&self.context)["providers"]
             .as_array()
             .into_iter()

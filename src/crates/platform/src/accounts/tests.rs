@@ -108,6 +108,24 @@ fn callback_samples_age_and_expire_even_when_the_provider_cannot_be_read() {
 }
 
 #[test]
+fn web_sign_in_settings_exist_before_a_provider_is_enabled() {
+    let directory = tempfile::tempdir().unwrap();
+    let service = AccountService::with_readers(
+        directory.path().join("home"),
+        directory.path().join("data"),
+        HashSet::new(),
+        CollectionGate::default(),
+        &[],
+    )
+    .unwrap();
+
+    let projection = service.projection();
+    let workbuddy = &projection.providers["workbuddy"]["webSignIn"]["sites"][0];
+    assert_eq!(workbuddy["multiAccount"], true);
+    assert_eq!(workbuddy["host"], "www.workbuddy.cn");
+}
+
+#[test]
 fn a_failed_read_keeps_its_windows_and_says_why_under_its_account() {
     let directory = tempfile::tempdir().unwrap();
     let service = AccountService::with_readers(

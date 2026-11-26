@@ -14,6 +14,7 @@ pub struct WebSignInDesk {
     context: AccountContext,
     shared: Arc<Shared>,
     gate: CollectionGate,
+    slot: String,
 }
 
 impl WebSignInDesk {
@@ -36,6 +37,7 @@ impl WebSignInDesk {
             host: host.to_owned(),
             cookie: cookie.to_owned(),
             user_agent: user_agent.to_owned(),
+            account_slot: self.slot.clone(),
         };
         if !self.accepts(provider, &session) {
             return Ok(false);
@@ -53,13 +55,13 @@ impl WebSignInDesk {
             return false;
         }
         let mut context = self.context.clone();
-        context.trial_web = Some((provider.to_owned(), session.clone()));
+        context.trial_web = Some((provider.to_owned(), self.slot.clone(), session.clone()));
         let _turn = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
         (facts.read)(&context).is_ok_and(|reading| reading.account.is_some())
     }
     /// Keeps `session` for `provider` and reads the provider again now.
     fn keep(&self, provider: &str, session: &agents::account::WebSession) -> Result<(), String> {
-        web::save(&self.context, provider, session)?;
+        web::save_slot(&self.context, provider, session, &self.slot)?;
         wake_provider(&self.shared, provider);
         Ok(())
     }
@@ -77,18 +79,23 @@ fn wake_provider(shared: &Shared, provider: &str) {
 
 impl AccountService {
     /// What the host's sign-in window works with (`WebSignInDesk`).
-    pub fn web_sign_in_desk(&self) -> WebSignInDesk {
-        WebSignInDesk {
+    pub fn web_sign_in_desk(&self, provider: &str, slot: &str) -> Result<WebSignInDesk, String> {
+        if !web::valid_slot(provider, slot) {
+            return Err("Unsupported WorkBuddy account slot".into());
+        }
+        Ok(WebSignInDesk {
             context: self.context.clone(),
             shared: Arc::clone(&self.shared),
             gate: Arc::clone(&self.gate),
-        }
+            slot: slot.to_owned(),
+        })
     }
     /// Forgets the web sign-in of `provider` on `host` and reads it again.
     pub fn web_sign_out(&self, params: &Value) -> Result<Value, String> {
         let provider = params["provider"].as_str().ok_or("provider is required")?;
         let host = params["host"].as_str().ok_or("host is required")?;
-        web::remove(&self.context, provider, host)?;
+        let slot = params["accountSlot"].as_str().unwrap_or("main");
+        web::remove_slot(&self.context, provider, host, slot)?;
         wake_provider(&self.shared, provider);
         Ok(json!({"kind":"ack","provider":provider,"host":host,"signedIn":false}))
     }

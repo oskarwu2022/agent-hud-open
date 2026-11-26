@@ -256,7 +256,14 @@ impl Runtime {
     }
     /// What the host's sign-in window works with (`WebSignInDesk`); none in
     /// a runtime that reads no accounts.
-    pub fn web_sign_in_desk(&self) -> Option<WebSignInDesk> {
-        self.accounts.as_ref().map(AccountService::web_sign_in_desk)
+    pub fn web_sign_in_desk(
+        &self,
+        provider: &str,
+        slot: &str,
+    ) -> Result<Option<WebSignInDesk>, String> {
+        self.accounts
+            .as_ref()
+            .map(|accounts| accounts.web_sign_in_desk(provider, slot))
+            .transpose()
     }
 }

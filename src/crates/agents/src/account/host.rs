@@ -186,6 +186,8 @@ pub struct WebSession {
     pub host: String,
     pub cookie: String,
     pub user_agent: String,
+    /// Stable local profile slot; `main` keeps the provider's original identity.
+    pub account_slot: String,
 }
 /// A browser identity for a web session in tests. A real session carries the
 /// identity its sign-in window presented (the host's `web_sign_in`).
@@ -252,6 +254,16 @@ pub trait Host {
     /// for `provider` (`WebSignIn`), if any.
     fn web_session(&self, _provider: &str, _host: &str) -> Option<WebSession> {
         None
+    }
+    /// Web sign-ins kept for this provider and site. Most providers keep one;
+    /// clients that support multiple accounts can override this.
+    fn web_sessions(&self, provider: &str, host: &str) -> Vec<WebSession> {
+        self.web_session(provider, host).into_iter().collect()
+    }
+    /// True while the user's newly collected web sign-in is being verified;
+    /// providers use only that session for the verification reading.
+    fn web_sign_in_trial(&self, _provider: &str) -> bool {
+        false
     }
     /// Whether the user turned on a reading that needs their consent, by its
     /// setting key. Checked again during a reading, since it can change.

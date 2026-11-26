@@ -30,13 +30,17 @@ pub(crate) fn foreign(label: &str) -> bool {
 }
 
 /// The window's label for `provider` on `host`: letters, digits and dashes.
-fn label(provider: &str, host: &str) -> String {
+fn label(provider: &str, host: &str, slot: &str) -> String {
     let part = |text: &str| {
         text.chars()
             .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
             .collect::<String>()
     };
-    format!("{PREFIX}{}-{}", part(provider), part(host))
+    if slot == "main" {
+        format!("{PREFIX}{}-{}", part(provider), part(host))
+    } else {
+        format!("{PREFIX}{}-{}-{}", part(provider), part(host), part(slot))
+    }
 }
 
 /// What a popup's page sets its title to when it closes itself. WebKit on
@@ -162,19 +166,21 @@ pub(crate) async fn web_sign_in(
     app: tauri::AppHandle,
     provider: String,
     host: String,
+    account_slot: Option<String>,
     service: tauri::State<'_, Service>,
 ) -> Result<(), String> {
+    let slot = account_slot.unwrap_or_else(|| "main".into());
     let desk = service
         .backend
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .runtime
-        .web_sign_in_desk()
+        .web_sign_in_desk(&provider, &slot)?
         .ok_or("Accounts are not read in this app")?;
     let (page, name) = desk
         .site(&provider, &host)
         .ok_or("This provider takes no sign-in on that site")?;
-    let label = label(&provider, &host);
+    let label = label(&provider, &host, &slot);
     if let Some(window) = app.get_webview_window(&label) {
         crate::shell::window_opened(&window);
         let _ = window.show();
@@ -243,7 +249,7 @@ pub(crate) async fn web_sign_in(
                     Ok(true) => {
                         let _ = handle.emit(
                             "web-sign-in",
-                            json!({"provider": provider, "host": host, "signedIn": true}),
+                            json!({"provider": provider, "host": host, "accountSlot": slot, "signedIn": true}),
                         );
                         let _ = window.close();
                         return;
@@ -268,7 +274,7 @@ mod tests {
 
     #[test]
     fn a_sign_in_window_is_known_by_its_label_and_names_only_safe_characters() {
-        let label = label("qoder", "qoder.com.cn");
+        let label = label("qoder", "qoder.com.cn", "main");
         assert_eq!(label, "web-sign-in-qoder-qoder-com-cn");
         assert!(foreign(&label));
         assert!(!foreign("main") && !foreign("statistics") && !foreign("hud-1"));
@@ -276,7 +282,10 @@ mod tests {
 
     #[test]
     fn a_popup_of_a_sign_in_window_is_a_sign_in_window() {
-        assert!(foreign(&format!("{}-popup-3", label("trae", "trae.cn"))));
+        assert!(foreign(&format!(
+            "{}-popup-3",
+            label("trae", "trae.cn", "main")
+        )));
     }
 
     #[test]
